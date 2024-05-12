@@ -2,7 +2,6 @@ import os
 import google.cloud.logging
 
 from google.cloud import storage
-from classes.logging_ import Logging
 
 
 class Gcp:
@@ -25,11 +24,8 @@ class Gcp:
 
     @staticmethod
     def _read_from_storage(bucket_name, blob_name):
-
         Gcp._ensure_storage_client()
         bucket = Gcp._storage_client.bucket(bucket_name)
-        if not Gcp._bucket_exists(bucket_name):
-            raise Exception(f'Bucket {bucket_name} does not exist')
         blob = bucket.blob(blob_name)
         with blob.open('r', encoding='utf8') as f:
             content = f.read()
@@ -44,13 +40,28 @@ class Gcp:
         return False
 
     @staticmethod
+    def _blob_exists(bucket_name, blob_name):
+        Gcp._ensure_storage_client()
+        bucket = Gcp._storage_client.bucket(bucket_name)
+        blob_exists = storage.Blob(bucket=bucket, name=blob_name).exists(Gcp._storage_client)
+        if blob_exists:
+            return True
+        return False
+
+    @staticmethod
     def _write_to_storage(bucket_name, user_name, temp_file_name):
         Gcp._ensure_storage_client()
         bucket = Gcp._storage_client.bucket(bucket_name)
-        if not Gcp._bucket_exists(bucket_name):
-            bucket.create()
         blob = bucket.blob(f'{user_name}/{user_name}_dictionary.ll')
         blob.upload_from_filename(temp_file_name)
+
+
+    @staticmethod
+    def _ensure_dictionary_bucket():
+        Gcp._ensure_storage_client()
+        bucket = Gcp._storage_client.bucket(Gcp._DICT_BUCKET_NAME)
+        if not Gcp._bucket_exists(Gcp._DICT_BUCKET_NAME):
+            bucket.create()
 
     @staticmethod
     def _delete_file_in_bucket(bucket_name, blob_name):
@@ -66,13 +77,17 @@ class Gcp:
 
     @staticmethod
     def upload_dictionary_to_bucket(user_name, dictionary_file):
+        Gcp._ensure_dictionary_bucket()
         Gcp._write_to_storage(Gcp._DICT_BUCKET_NAME, user_name, dictionary_file)
 
     @staticmethod
     def download_dictionary_from_bucket(user_name):
         blob_name = f'{user_name}/{user_name}_dictionary.ll'
         dictionary_file = f'./{user_name}_dictionary.ll'
-        content = Gcp._read_from_storage(Gcp._DICT_BUCKET_NAME, blob_name)
+        Gcp._ensure_dictionary_bucket()
+        content = ''
+        if Gcp._blob_exists(Gcp._DICT_BUCKET_NAME, blob_name):
+            content = Gcp._read_from_storage(Gcp._DICT_BUCKET_NAME, blob_name)
         if os.path.exists(dictionary_file):
             os.remove(dictionary_file)
         open(dictionary_file, 'a').close()
@@ -82,5 +97,6 @@ class Gcp:
     @staticmethod
     def delete_dictionary_from_gcp_bucket(user_name):
         blob_name = f'{user_name}/{user_name}_dictionary.ll'
-        Gcp._delete_file_in_bucket(Gcp._DICT_BUCKET_NAME, blob_name)
-
+        Gcp._ensure_dictionary_bucket()
+        if Gcp._blob_exists(Gcp._DICT_BUCKET_NAME, blob_name):
+            Gcp._delete_file_in_bucket(Gcp._DICT_BUCKET_NAME, blob_name)
