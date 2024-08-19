@@ -9,14 +9,17 @@ from classes.logging_ import Logging
 
 class CustomDictionary:
     @staticmethod
-    def download_dictionary_on_first_start(user_name):
+    def sync_dictionaries(user_name):
         if Globals.first_start:
+            active_dictionary = Gcp.read_file_from_bucket(Globals.get_active_dictionary_blob_name_cache(user_name))
+            if active_dictionary is not None:
+                Globals.active_dictionary = active_dictionary
             Gcp.download_dictionary_from_bucket(user_name)
             Globals.first_start = False
 
     @staticmethod
     def clear_dictionary(user_name):
-        dictionary_file = f'./{user_name}_dictionary.ll'
+        dictionary_file = f'./{Globals.get_dictionary_file(user_name)}'
         if not os.path.exists(dictionary_file):
             return 'Dictionary is empty!\nTo update your dictionary send /update'
         os.remove(dictionary_file)
@@ -25,10 +28,10 @@ class CustomDictionary:
 
     @staticmethod
     def read_from_dictionary(user_name):
-        dictionary_file = f'./{user_name}_dictionary.ll'
+        dictionary_file = f'./{Globals.get_dictionary_file(user_name)}'
 
         if not os.path.exists(dictionary_file):
-            open(dictionary_file, 'a').close()
+            Gcp.download_dictionary_from_bucket(user_name)
 
         try:
             with open(dictionary_file, 'r', encoding='utf-8') as f:
@@ -45,8 +48,16 @@ class CustomDictionary:
                 working_dictionary = eval(file_content)
             except Exception as ex:
                 Logging.log_error(f'Failed to eval(file_content) in read_from_dictionary: {ex}')
-                return 'Hmm... Something`s wrong with the dictionary:\n', str(ex)
+                return f'Hmm... Something`s wrong with the dictionary:\n{ex}'
         return working_dictionary
+
+    @staticmethod
+    def change_dictionary(user_name, dictionary_name):
+        Globals.active_dictionary = dictionary_name
+        file_name = Globals.get_active_dictionary_file_name_cache(user_name)
+        with open(f'./{file_name}', 'w', encoding='utf-8') as f:
+            f.write(Globals.active_dictionary)
+        Gcp.upload_file_to_bucket(user_name, file_name)
 
     @staticmethod
     def show_list(user_name, position, step=None):
@@ -65,8 +76,22 @@ class CustomDictionary:
             return output
 
     @staticmethod
+    def list_dictionaries(user_name):
+        is_local_dictionary_returned_from_gcp = False
+        dictionary_gcp_paths = Gcp.list_user_dictionaries(user_name)
+        all_dictionaries = 'Your dictionaries:\n'
+        for dictionary_path in dictionary_gcp_paths:
+            dictionary_pretty_name = dictionary_path.replace(f'{user_name}_', '').replace(user_name, '').replace('/', '').replace('.ll', '')
+            if dictionary_pretty_name == Globals.active_dictionary:
+                is_local_dictionary_returned_from_gcp = True
+            all_dictionaries += f'{dictionary_pretty_name} [ACTIVE]\n' if dictionary_pretty_name == Globals.active_dictionary else f'{dictionary_pretty_name}\n'
+        if not is_local_dictionary_returned_from_gcp:
+            all_dictionaries += f'{Globals.active_dictionary} [ACTIVE]\n'
+        return all_dictionaries
+
+    @staticmethod
     def update_dictionary(user_name, words_in_string_1, words_in_string_2):
-        dictionary_file = f'./{user_name}_dictionary.ll'
+        dictionary_file = f'./{Globals.get_dictionary_file(user_name)}'
         temp_dictionary = {}
         try:
             list_1 = words_in_string_1.split('\n')
@@ -91,7 +116,7 @@ class CustomDictionary:
         try:
             with open(dictionary_file, 'w', encoding='utf-8') as f:
                 f.write(str(working_dictionary))
-            Gcp.upload_dictionary_to_bucket(user_name, dictionary_file)
+            Gcp.upload_dictionary_to_bucket(user_name)
             return 'Dictionary updated!'
         except Exception as ex:
             debug_msg = f'Failed to write to dictionary file in update_dictionary, dictionary_file={dictionary_file}, working_dictionary={working_dictionary}: {ex}'
@@ -106,11 +131,11 @@ class CustomDictionary:
             del working_dictionary[item]
         except Exception as ex:
             return 'Item not found!'
-        dictionary_file = f'./{user_name}_dictionary.ll'
+        dictionary_file = f'./{Globals.get_dictionary_file(user_name)}'
         try:
             with open(dictionary_file, 'w', encoding='utf-8') as f:
                 f.write(str(working_dictionary))
-            Gcp.upload_dictionary_to_bucket(user_name, dictionary_file)
+            Gcp.upload_dictionary_to_bucket(user_name)
             return f'Item "{item}" deleted.'
         except Exception as ex:
             debug_msg = f'Failed to write to dictionary file, dictionary_file={dictionary_file}, working_dictionary={working_dictionary}: {ex}'
