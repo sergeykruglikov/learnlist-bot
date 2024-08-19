@@ -5,6 +5,7 @@ import telebot
 from classes.custom_dictionary import CustomDictionary
 from classes.gcp import Gcp
 from classes.globals import Globals
+from config import Mode
 
 print('Loading...')
 
@@ -26,24 +27,30 @@ def start_message(msg):
     bot.send_message(msg.chat.id, f'Dear {msg.from_user.first_name}, \nto add items, please send /update\nfor training send /training.')
 
 
+@bot.message_handler(commands=['create'])
+def update_message(msg):
+    Globals.current_mode = Mode.CREATE
+    bot.send_message(msg.chat.id, f'New list name:')
+
+
 @bot.message_handler(commands=['update'])
 def update_message(msg):
     CustomDictionary.download_dictionary_on_first_start(msg.from_user.username)
-    Globals.mode = 'update1'
+    Globals.current_mode = Mode.UPDATE_ITEM
     bot.send_message(msg.chat.id, f'Enter a list before translation:')
 
 
 @bot.message_handler(commands=['delete'])
 def delete_message(msg):
     CustomDictionary.download_dictionary_on_first_start(msg.from_user.username)
-    Globals.mode = 'delete'
+    Globals.current_mode = Mode.DELETE
     bot.send_message(msg.chat.id, f'Enter a value you would like to delete:')
 
 
 @bot.message_handler(commands=['clear'])
 def clear_message(msg):
     CustomDictionary.download_dictionary_on_first_start(msg.from_user.username)
-    Globals.mode = 'clear'
+    Globals.current_mode = Mode.CLEAR
     bot.send_message(msg.chat.id, 'Do you want to clear your dictionary? (yes/no)')
 
 
@@ -66,7 +73,7 @@ def show_message(msg):
 @bot.message_handler(commands=['training'])
 def training_message(msg):
     CustomDictionary.download_dictionary_on_first_start(msg.from_user.username)
-    Globals.mode = 'training'
+    Globals.current_mode = Mode.TRAINING
     bot.send_message(msg.chat.id, CustomDictionary.start_training(msg.from_user.username))
 
 
@@ -75,27 +82,30 @@ def send_text(msg):
     CustomDictionary.download_dictionary_on_first_start(msg.from_user.username)
     user_name = msg.from_user.username
     user_text = msg.text.lower()
-    if Globals.mode == 'training':
+    if Globals.current_mode == Mode.TRAINING:
         bot.send_message(msg.chat.id, CustomDictionary.start_training(user_name, user_text))
-    elif Globals.mode == 'update1':
+    elif Globals.current_mode == Mode.UPDATE_ITEM:
         Globals.temp_user_input_1 = user_text
         bot.send_message(msg.chat.id, 'Enter a list after translation:')
-        Globals.mode = 'update2'
-    elif Globals.mode == 'update2':
+        Globals.current_mode = Mode.UPDATE_VALUE
+    elif Globals.current_mode == Mode.UPDATE_VALUE:
         Globals.temp_user_input_2 = user_text
         bot.send_message(msg.chat.id, CustomDictionary.update_dictionary(user_name, Globals.temp_user_input_1, Globals.temp_user_input_2))
-        Globals.mode = 'training'
-    elif Globals.mode == 'clear':
+        Globals.current_mode = Mode.TRAINING
+    elif Globals.current_mode == Mode.CLEAR:
         if user_text == 'yes':
             bot.send_message(msg.chat.id, CustomDictionary.clear_dictionary(user_name))
-            Globals.mode = 'training'
+            Globals.current_mode = Mode.TRAINING
         elif user_text == 'no':
-            Globals.mode = 'training'
+            Globals.current_mode = Mode.TRAINING
         else:
             bot.send_message(msg.chat.id, 'Do you want to clear your dictionary? (yes/no)')
-    elif Globals.mode == 'delete':
+    elif Globals.current_mode == Mode.DELETE:
         bot.send_message(msg.chat.id, CustomDictionary.delete_item(user_name, user_text))
-        Globals.mode = 'training'
+        Globals.current_mode = Mode.TRAINING
+    # elif Globals.current_mode == Mode.CREATE:
+    #
+
 
 
 bot.polling()

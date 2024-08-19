@@ -55,7 +55,6 @@ class Gcp:
         blob = bucket.blob(f'{user_name}/{user_name}_dictionary.ll')
         blob.upload_from_filename(temp_file_name)
 
-
     @staticmethod
     def _ensure_dictionary_bucket():
         Gcp._ensure_storage_client()
